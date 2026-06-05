@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Object Identifier</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;height:100dvh;overflow:hidden;user-select:none}
+#app{position:relative;width:100%;height:100dvh;overflow:hidden}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#capture-canvas{display:none}
+#frozen-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+
+/* HUD top bar */
+#topbar{position:absolute;top:0;left:0;right:0;padding:48px 20px 14px;background:linear-gradient(to bottom,rgba(0,0,0,.7),transparent);display:flex;align-items:center;justify-content:space-between;z-index:10}
+#counter-badge{background:rgba(255,255,255,.18);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;letter-spacing:.4px}
+#status-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 6px #4ade80;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#reset-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:6px 14px;font-size:13px;color:#fff;cursor:pointer;display:none}
+
+/* Bottom controls */
+#bottombar{position:absolute;bottom:0;left:0;right:0;padding:20px 30px 44px;background:linear-gradient(to top,rgba(0,0,0,.75),transparent);display:flex;align-items:center;justify-content:space-around;z-index:10}
+#shutter{width:72px;height:72px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.4);cursor:pointer;transition:transform .1s;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#shutter:active{transform:scale(.92)}
+#shutter svg{width:28px;height:28px}
+.side-btn{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s}
+.side-btn:active{background:rgba(255,255,255,.3)}
+.side-btn svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Overlay objects */
+.obj-overlay{position:absolute;cursor:pointer;z-index:20;transform:translate(-50%,-50%)}
+.obj-dot{width:14px;height:14px;border-radius:50%;background:#facc15;border:2px solid #fff;box-shadow:0 0 10px rgba(250,204,21,.7);transition:transform .2s}
+.obj-overlay:hover .obj-dot,.obj-overlay.active .obj-dot{transform:scale(1.4)}
+.obj-popup{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);background:rgba(15,15,15,.88);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:12px 14px;min-width:170px;max-width:220px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s,transform .2s;transform:translateX(-50%) translateY(6px)}
+.obj-overlay.active .obj-popup,.obj-overlay:hover .obj-popup{opacity:1;transform:translateX(-50%) translateY(0)}
+.obj-popup-name{font-size:13px;font-weight:700;color:#facc15;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obj-popup-row{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;margin-bottom:3px}
+.obj-popup-label{color:rgba(255,255,255,.5)}
+.obj-popup-val{color:#fff;font-weight:500}
+.obj-popup-tag{display:inline-block;background:rgba(250,204,21,.18);color:#facc15;border-radius:6px;padding:2px 7px;font-size:10px;margin-top:6px;font-weight:600}
+
+/* Focus mode */
+#focus-mode-bar{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:15;display:none;pointer-events:none}
+#focus-exit{position:absolute;top:52px;left:20px;z-index:30;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:20px;padding:8px 16px;font-size:13px;cursor:pointer;display:none;backdrop-filter:blur(8px)}
+
+/* Loading spinner */
+#loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;z-index:50;background:rgba(0,0,0,.5);gap:16px}
+.spinner{width:48px;height:48px;border:3px solid rgba(255,255,255,.2);border-top-color:#facc15;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{font-size:14px;color:rgba(255,255,255,.8);letter-spacing:.3px}
+
+/* Toast */
+#toast{position:absolute;bottom:120px;left:50%;transform:translateX(-50%);background:rgba(30,30,30,.9);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:10px 20px;font-size:13px;z-index:60;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+
+/* Permission screen */
+#permission-screen{position:absolute;inset:0;background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;gap:20px;padding:30px}
+#permission-screen svg{width:64px;height:64px;stroke:rgba(255,255,255,.4);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+#permission-screen h2{font-size:20px;font-weight:600;text-align:center}
+#permission-screen p{font-size:14px;color:rgba(255,255,255,.55);text-align:center;line-height:1.6}
+#start-btn{background:#facc15;color:#000;border:none;border-radius:14px;padding:14px 32px;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="permission-screen">
+    <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    <h2>Object Identifier</h2>
+    <p>Inquadra oggetti con la fotocamera. L'AI li identificherà, conterà e mostrerà informazioni dettagliate in sovrimpressione.</p>
+    <button id="start-btn" onclick="startCamera()">Attiva fotocamera</button>
+  </div>
+
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="capture-canvas"></canvas>
+  <img id="frozen-frame" alt="frame catturato">
+  <canvas id="canvas"></canvas>
+
+  <div id="focus-mode-bar"></div>
+  <button id="focus-exit" onclick="exitFocus()">← Tutti gli oggetti</button>
+
+  <div id="topbar">
+    <div id="counter-badge">0 oggetti</div>
+    <div id="status-dot"></div>
+    <button id="reset-btn" onclick="resetScan()">Nuova scansione</button>
+  </div>
+
+  <div id="bottombar">
+    <div class="side-btn" onclick="toggleFlash()" id="flash-btn">
+      <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    </div>
+    <div id="shutter" onclick="captureAndAnalyze()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3" fill="#000"/>
+      </svg>
+    </div>
+    <div class="side-btn" onclick="switchCamera()" id="flip-btn">
+      <svg viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10"/><path d="M3.51 15a9 9 0 0 0 14.85 3.36L23 14"/></svg>
+    </div>
+  </div>
+
+  <div id="loading"><div class="spinner"></div><p>Analisi in corso...</p></div>
+  <div id="toast"></div>
+</div>
+
+<script>
+const ANTHROPIC_KEY_PLACEHOLDER = "";
+let stream = null, facingMode = "environment", flashOn = false;
+let objects = [], focusedId = null, scanning = false;
+
+async function startCamera(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:1280},height:{ideal:720}},audio:false});
+    const v = document.getElementById("video");
+    v.srcObject = stream;
+    await v.play();
+    document.getElementById("permission-screen").style.display = "none";
+    showToast("Fotocamera attiva — premi il pulsante per analizzare");
+  }catch(e){
+    showToast("Errore: "+e.message);
+  }
+}
+
+async function switchCamera(){
+  facingMode = facingMode === "environment" ? "user" : "environment";
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  await startCamera();
+}
+
+function toggleFlash(){
+  flashOn = !flashOn;
+  const btn = document.getElementById("flash-btn");
+  btn.style.background = flashOn ? "rgba(250,204,21,.4)" : "rgba(255,255,255,.15)";
+  showToast(flashOn ? "Flash: attivo (simulato)" : "Flash: disattivo");
+}
+
+function captureFrame(){
+  const v = document.getElementById("video");
+  const c = document.getElementById("capture-canvas");
+  c.width = v.videoWidth;
+  c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v,0,0);
+  return c.toDataURL("image/jpeg",.85).split(",")[1];
+}
+
+async function captureAndAnalyze(){
+  if(scanning) return;
+  scanning = true;
+  const b64 = captureFrame();
+  const frozen = document.getElementById("frozen-frame");
+  frozen.src = "data:image/jpeg;base64,"+b64;
+  frozen.style.display = "block";
+  document.getElementById("video").style.display = "none";
+  document.getElementById("loading").style.display = "flex";
+  document.getElementById("shutter").style.opacity = ".4";
+  clearOverlays();
+
+  try{
+    const res = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-20250514",
+        max_tokens:1000,
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},
+          {type:"text",text:`Analizza questa immagine e identifica tutti gli oggetti principali visibili.
+Per ogni oggetto fornisci:
+- nome (in italiano)
+- modello/marca se riconoscibile (oppure "N/D")
+- categoria (es. Elettronica, Arredamento, Cibo, Veicolo, Persona, Animale, ecc.)
+- colore principale
+- stima dimensione: Piccolo/Medio/Grande
+- posizione approssimativa nell'immagine come percentuale: x (0=sinistra,100=destra), y (0=alto,100=basso)
+
+Rispondi SOLO con JSON valido, nessun testo extra, nessun markdown. Formato:
+{"objects":[{"id":1,"nome":"...","modello":"...","categoria":"...","colore":"...","dimensione":"...","x":50,"y":50}]}`}
+        ]}]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content.map(i=>i.text||"").join("");
+    const clean = raw.replace(/```json|```/g,"").trim();
+    const parsed = JSON.parse(clean);
+    objects = parsed.objects || [];
+    renderOverlays();
+    const n = objects.length;
+    document.getElementById("counter-badge").textContent = n+" oggett"+(n===1?"o":"i");
+    document.getElementById("reset-btn").style.display = "block";
+    showToast(n+" oggett"+(n===1?"o":"i")+" identificat"+(n===1?"o":"i"));
+  }catch(e){
+    showToast("Errore analisi: "+e.message);
+    resetScan();
+  }finally{
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("shutter").style.opacity = "1";
+    scanning = false;
+  }
+}
+
+function renderOverlays(){
+  const app = document.getElementById("app");
+  objects.forEach(obj=>{
+    const el = document.createElement("div");
+    el.className = "obj-overlay";
+    el.id = "obj-"+obj.id;
+    el.style.left = obj.x+"%";
+    el.style.top = obj.y+"%";
+    el.innerHTML = `
+      <div class="obj-dot"></div>
+      <div class="obj-popup">
+        <div class="obj-popup-name">${obj.nome}</div>
+        <div class="obj-popup-row"><span class="obj-popup-label">Modello</span><span class="obj-popup-val">${obj.modello||"N/D"}</span></div>
+        <div class="obj-popup-row"><span class="obj-popup-label">Categoria</span><span class="obj-popup-val">${obj.categoria}</span></div>
+        <div class="obj-popup-row"><span class="obj-popup-label">Colore</span><span class="obj-popup-val">${obj.colore}</span></div>
+        <div class="obj-popup-row"><span class="obj-popup-label">Dimensione</span><span class="obj-popup-val">${obj.dimensione}</span></div>
+        <span class="obj-popup-tag">#${obj.id}</span>
+      </div>`;
+    el.addEventListener("click", e=>{e.stopPropagation(); focusObject(obj.id);});
+    app.appendChild(el);
+  });
+}
+
+function focusObject(id){
+  if(focusedId === id){exitFocus();return;}
+  focusedId = id;
+  document.getElementById("focus-mode-bar").style.display = "block";
+  document.getElementById("focus-exit").style.display = "block";
+  objects.forEach(obj=>{
+    const el = document.getElementById("obj-"+obj.id);
+    if(!el) return;
+    if(obj.id === id){
+      el.classList.add("active");
+      el.style.zIndex = 40;
+      el.style.opacity = "1";
+    } else {
+      el.style.opacity = "0.15";
+      el.style.zIndex = 16;
+      el.classList.remove("active");
+    }
+  });
+}
+
+function exitFocus(){
+  focusedId = null;
+  document.getElementById("focus-mode-bar").style.display = "none";
+  document.getElementById("focus-exit").style.display = "none";
+  objects.forEach(obj=>{
+    const el = document.getElementById("obj-"+obj.id);
+    if(!el) return;
+    el.style.opacity = "1";
+    el.style.zIndex = 20;
+    el.classList.remove("active");
+  });
+}
+
+function clearOverlays(){
+  objects.forEach(obj=>{
+    const el = document.getElementById("obj-"+obj.id);
+    if(el) el.remove();
+  });
+  objects = [];
+  exitFocus();
+}
+
+function resetScan(){
+  clearOverlays();
+  document.getElementById("frozen-frame").style.display = "none";
+  document.getElementById("video").style.display = "block";
+  document.getElementById("counter-badge").textContent = "0 oggetti";
+  document.getElementById("reset-btn").style.display = "none";
+}
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._to);
+  t._to = setTimeout(()=>t.classList.remove("show"),2800);
+}
+
+document.getElementById("app").addEventListener("click", e=>{
+  if(e.target.closest(".obj-overlay") || e.target.closest("#focus-exit")) return;
+  if(focusedId !== null) exitFocus();
+});
+</script>
+</body>
+</html>
