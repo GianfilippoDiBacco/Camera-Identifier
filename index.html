@@ -180,10 +180,11 @@ Rispondi SOLO con JSON valido, nessun testo extra, nessun markdown. Formato:
       })
     });
     const data = await res.json();
-    const raw = data.content.map(i=>i.text||"").join("");
-    const clean = raw.replace(/```json|```/g,"").trim();
-    const parsed = JSON.parse(clean);
-    objects = parsed.objects || [];
+    const raw = (data.content||[]).map(i=>i.type==="text"?i.text:"").join("");
+    const match = raw.match(/\{[\s\S]*\}/);
+    if(!match) throw new Error("Nessun JSON trovato nella risposta");
+    const parsed = JSON.parse(match[0]);
+    objects = Array.isArray(parsed.objects) ? parsed.objects : [];
     renderOverlays();
     const n = objects.length;
     document.getElementById("counter-badge").textContent = n+" oggett"+(n===1?"o":"i");
